@@ -35,3 +35,53 @@ class DeepseekV3ModelArgs: # we define our class
     beta_fast: int=32 # TBD, I do not understand this yet
     beta_slow:int=1 # TBD, I do not understand this yet
     mscale:float=1.0 # TBD, I do not understand this yet
+
+    def get_nparams_and_flops(self, model: nn.Module, seq_len:int) -> tuple[int, int]:
+        n_params_embedding = 0
+        n_params_dense = 0
+        n_params_moe_router = 0
+        n_params_shared_experts = 0
+        n_params_experts = 0
+
+        for name, p in model.named_parameters():
+            if "embedding" in name:
+                n_params_embedding += p.numel()
+                n_params_dense += p.numel()
+
+            elif "moe.shared_expert" in name:
+                n_params_shared_experts += p.numel()
+
+            elif "moe.router" in name:
+                n_params_moe_router += p.numel()
+
+            elif "moe.experts" in name:
+                n_params_experts += p.numel()
+
+            else:
+                n_params_dense += p.numel()
+
+        n_params_sparse = n_params_experts + n_params_shared_experts + n_params_moe_router
+        n_params = n_params_dense + n_params_sparse
+        n_params_sparse_active = (
+            n_params_moe_router
+            + n_params_shared_experts
+            + n_params_experts * self.moe_args.top_k // self.moe_args.num_experts
+        )
+
+        logger.info(
+            f"Total parameters count: {n_params}",
+            f"Dense parameters count: {n_params_dense}",
+            f"Sparse parameters count: {n_params_sparse}",
+            f"Active parameters count: {n_params_dense + n_params_sparse_active}"
+        )
+
+        n_layers = self.n_layers
+        n_heads = self.n_heads
+        head_dims = self.qk_nope_head_dim + self.qk_rope_head_dim + self.v_head_dim
+
+        num_flops_per_token = (
+            6*(n_params_dense - n_params_embedding + n_params_sparse_active)
+            + 6*n_layers*n_heads*head_dims*seq_len
+        )
+
+        return n_params, num_flops_per_token
