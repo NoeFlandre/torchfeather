@@ -1,0 +1,33 @@
+import math
+
+import torch
+
+from torchfeather.model_args import DeepseekV3ModelArgs
+
+def precompute_freq_cis(args: DeepseekV3ModelArgs) -> torch.Tensor:
+    dim=args.qk_rope_head_dim
+    seqlen = args.max_seq_len
+    beta_fast = args.beta_fast
+    beta_slow = args.beta_slow
+    base = args.rope_theta
+    factor = args.rope_factor
+
+    # base RoPE frequencies, we attribute a frequency to each pair of the dimension
+    # DIMENSION: [d/2]
+    freqs = 1.0 / (
+        base ** (torch.arange(0, dim, 2, dtype=torch.float32) / dim)
+    )
+
+    # position indices
+    # DIMENSION: [seqlen]
+    t = torch.arange(seqlen)
+
+    # Outer product which is going to give back an object of dimension [positions] x [frequencies]
+    # It is basically computing all combinations of positions x frequencies
+    # DIMENSION : [seqlen, d/2]
+    freqs = torch.outer(t, freqs)
+
+    # it is going to compute a tensor of complex numbers e^(ixposxfreq)
+    # DIMENSION: [seqlen, d/2]
+    freqs_cis = torch.polar(torch.ones_like(freqs), freqs)
+    return freqs_cis
