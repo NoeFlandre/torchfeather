@@ -12,6 +12,9 @@ def precompute_freq_cis(args: DeepseekV3ModelArgs) -> torch.Tensor:
     base = args.rope_theta
     factor = args.rope_factor
 
+    def find_pair_index_that_rotate_N_times(num_rotations: float, dim: int, base: float, max_seq_len: int) -> float:
+        return (dim * math.log(max_seq_len / 2 * math.pi * num_rotations)) / (2 * math.log(base))
+
     # base RoPE frequencies, we attribute a frequency to each pair of the dimension
     # DIMENSION: [d/2]
     freqs = 1.0 / (
