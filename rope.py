@@ -31,3 +31,18 @@ def precompute_freq_cis(args: DeepseekV3ModelArgs) -> torch.Tensor:
     # DIMENSION: [seqlen, d/2]
     freqs_cis = torch.polar(torch.ones_like(freqs), freqs)
     return freqs_cis
+
+def apply_rotary_emb(x:torch.Tensor, freq_cis: torch.Tensor) -> torch.Tensor:
+    # x.shape = [B, S, H, D]
+    dtype = x.dtype
+
+    x = x.float() #converts the values to float32
+
+    x = x.view(*x.shape[:-1], -1, 2) # [B, S, H, D/2, 2]
+
+    x = torch.view_as_complex(x) # [B, S, H, D/2]
+
+    freq_cis = freq_cis.view(1, x.size(1), 1, x.size(-1)) # [B, S, H, D/2]
+
+    y = torch.view_as_real(x*freq_cis).flatten(3) # [B, S, H, D] because view are real gives back [B, S, H, D/2, 2] and then we flatten last two dimensions together
+    return y.to(dtype)
