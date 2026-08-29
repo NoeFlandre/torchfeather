@@ -15,10 +15,17 @@ def precompute_freq_cis(args: DeepseekV3ModelArgs) -> torch.Tensor:
     factor = args.rope_factor
 
     def find_pair_index_that_rotate_N_times(num_rotations: float, dim: int, base: float, max_seq_len: int) -> float:
+        """
+        This function is returning the pair index whose RoPE frequency does rotate N times.
+        This formula just come from isolating i in the formula: N = Lwi / 2pi
+        """
         return (dim * math.log(max_seq_len / 2 * math.pi * num_rotations)) / (2 * math.log(base))
 
 
     def find_correction_range(low_rot:float, high_rot:float, dim:int, base:float, max_seq_len:int) -> tuple[int, int]:
+        """
+        Given a number of low rotations and high rotations, returns the tuple of pair index between this low and high rotations number.
+        """
 
         low = math.floor(find_pair_index_that_rotate_N_times(low_rot, dim, base, max_seq_len))
         high = math.ceil(find_pair_index_that_rotate_N_times(high_rot, dim, base, max_seq_len))
@@ -26,6 +33,10 @@ def precompute_freq_cis(args: DeepseekV3ModelArgs) -> torch.Tensor:
         return max(low, 0), min(high, dim-1)
 
     def linear_ramp_factor(min:float, max:float, dim:int) -> torch.Tensor:
+        """
+        Returns the linear ramp factor for the dimension pairs between min and max
+        """
+
         if min == max:
             max += 0.001
 
@@ -39,6 +50,12 @@ def precompute_freq_cis(args: DeepseekV3ModelArgs) -> torch.Tensor:
     freqs = 1.0 / (
         base ** (torch.arange(0, dim, 2, dtype=torch.float32) / dim)
     )
+
+    if seq_len > args.original_seq_len:
+        low, high = find_correction_range(beta_fast, beta_slow, dim, base, args.original_seq_len)
+
+        smooth = 1 - linear_ramp_factor(low, high, dim //2)
+        freqs = (freqs / factor)*(1 - smooth) + freqs*smooth
 
     # position indices
     # DIMENSION: [seqlen]
