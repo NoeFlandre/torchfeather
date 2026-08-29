@@ -1,4 +1,6 @@
+from ast import Pass
 import math
+from termios import TABDLY
 
 import torch
 
@@ -14,6 +16,15 @@ def precompute_freq_cis(args: DeepseekV3ModelArgs) -> torch.Tensor:
 
     def find_pair_index_that_rotate_N_times(num_rotations: float, dim: int, base: float, max_seq_len: int) -> float:
         return (dim * math.log(max_seq_len / 2 * math.pi * num_rotations)) / (2 * math.log(base))
+
+
+    def find_correction_range(low_rot:float, high_rot:float, dim:int, base:float, max_seq_len:int) -> tuple[int, int]:
+
+        low = math.floor(find_pair_index_that_rotate_N_times(low_rot, dim, base, max_seq_len))
+        high = math.ceil(find_pair_index_that_rotate_N_times(high_rot, dim, base, max_seq_len))
+
+        return max(low, 0), min(high, dim-1)
+
 
     # base RoPE frequencies, we attribute a frequency to each pair of the dimension
     # DIMENSION: [d/2]
