@@ -25,6 +25,14 @@ def precompute_freq_cis(args: DeepseekV3ModelArgs) -> torch.Tensor:
 
         return max(low, 0), min(high, dim-1)
 
+    def linear_ramp_factor(min:float, max:float, dim:int) -> torch.Tensor:
+        if min == max:
+            max += 0.001
+
+        linear_ramp_factor = (torch.arange(dim, dtype=torch.float32) - min) / (max - min)
+        linear_ramp_factor = torch.clamp(linear_ramp_factor, 0, 1)
+
+        return linear_ramp_factor
 
     # base RoPE frequencies, we attribute a frequency to each pair of the dimension
     # DIMENSION: [d/2]
