@@ -14,6 +14,69 @@ class _RoPEConfig(Protocol):
     original_seq_len: int
 
 
+def _find_pair_index_that_rotate_N_times(
+    num_rotations: float, dim: int, base: float, max_seq_len: int
+) -> float:
+    """
+    This function is returning the pair index whose RoPE frequency does rotate N times.
+    This formula just come from isolating i in the formula: N = Lwi / 2pi
+    """
+    return (dim * math.log(max_seq_len / 2 * math.pi * num_rotations)) / (
+        2 * math.log(base)
+    )
+
+
+def _find_correction_range(
+    low_rot: float, high_rot: float, dim: int, base: float, max_seq_len: int
+) -> tuple[int, int]:
+    """
+    Given a number of low rotations and high rotations, returns the tuple of pair index between this low and high rotations number.
+    """
+
+    low = math.floor(
+        _find_pair_index_that_rotate_N_times(low_rot, dim, base, max_seq_len)
+    )
+    high = math.ceil(
+        _find_pair_index_that_rotate_N_times(high_rot, dim, base, max_seq_len)
+    )
+
+    return max(low, 0), min(high, dim - 1)
+
+
+def _linear_ramp_factor(min: float, max: float, dim: int) -> torch.Tensor:
+    """
+    Returns the linear ramp factor for the dimension pairs between min and max
+    """
+
+    if min == max:
+        max += 0.001
+
+    linear_ramp_factor = (torch.arange(dim, dtype=torch.float32) - min) / (max - min)
+    linear_ramp_factor = torch.clamp(linear_ramp_factor, 0, 1)
+
+    return linear_ramp_factor
+
+
+def _apply_yarn_scaling(
+    freqs: torch.Tensor,
+    *,
+    rope_dim: int,
+    beta_fast: float,
+    beta_slow: float,
+    base: float,
+    factor: float,
+    original_seq_len: int,
+) -> torch.Tensor:
+
+    low, high = _find_correction_range(
+        beta_fast, beta_slow, rope_dim, base, original_seq_len
+    )
+
+    smooth = 1 - _linear_ramp_factor(low, high, freqs.shape[0])
+    freqs = (freqs / factor) * (1 - smooth) + freqs * smooth
+    return freqs
+
+
 def precompute_freq_cis(args: _RoPEConfig) -> torch.Tensor:
     dim = args.qk_rope_head_dim
     seq_len = args.max_seq_len
@@ -21,60 +84,22 @@ def precompute_freq_cis(args: _RoPEConfig) -> torch.Tensor:
     beta_slow = args.beta_slow
     base = args.rope_theta
     factor = args.rope_factor
-
-    def find_pair_index_that_rotate_N_times(
-        num_rotations: float, dim: int, base: float, max_seq_len: int
-    ) -> float:
-        """
-        This function is returning the pair index whose RoPE frequency does rotate N times.
-        This formula just come from isolating i in the formula: N = Lwi / 2pi
-        """
-        return (dim * math.log(max_seq_len / 2 * math.pi * num_rotations)) / (
-            2 * math.log(base)
-        )
-
-    def find_correction_range(
-        low_rot: float, high_rot: float, dim: int, base: float, max_seq_len: int
-    ) -> tuple[int, int]:
-        """
-        Given a number of low rotations and high rotations, returns the tuple of pair index between this low and high rotations number.
-        """
-
-        low = math.floor(
-            find_pair_index_that_rotate_N_times(low_rot, dim, base, max_seq_len)
-        )
-        high = math.ceil(
-            find_pair_index_that_rotate_N_times(high_rot, dim, base, max_seq_len)
-        )
-
-        return max(low, 0), min(high, dim - 1)
-
-    def linear_ramp_factor(min: float, max: float, dim: int) -> torch.Tensor:
-        """
-        Returns the linear ramp factor for the dimension pairs between min and max
-        """
-
-        if min == max:
-            max += 0.001
-
-        linear_ramp_factor = (torch.arange(dim, dtype=torch.float32) - min) / (
-            max - min
-        )
-        linear_ramp_factor = torch.clamp(linear_ramp_factor, 0, 1)
-
-        return linear_ramp_factor
+    original_seq_len = args.original_seq_len
 
     # base RoPE frequencies, we attribute a frequency to each pair of the dimension
     # DIMENSION: [d/2]
     freqs = 1.0 / (base ** (torch.arange(0, dim, 2, dtype=torch.float32) / dim))
 
     if seq_len > args.original_seq_len:
-        low, high = find_correction_range(
-            beta_fast, beta_slow, dim, base, args.original_seq_len
+        freqs = _apply_yarn_scaling(
+            freqs=freqs,
+            rope_dim=dim,
+            beta_fast=beta_fast,
+            beta_slow=beta_slow,
+            base=base,
+            factor=factor,
+            original_seq_len=original_seq_len,
         )
-
-        smooth = 1 - linear_ramp_factor(low, high, dim // 2)
-        freqs = (freqs / factor) * (1 - smooth) + freqs * smooth
 
     # position indices
     # DIMENSION: [seq_len]

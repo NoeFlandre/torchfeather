@@ -39,10 +39,7 @@ class DeepseekV3ModelArgs:  # we define our class
 
     # YaRN
     original_seq_len: int = 4096  # The original sequence length RoPE was calibrated for
-    rope_theta: float = (
-        10,
-        000.0,
-    )  # this is RoPE base value and it controls the spacing between frequencies
+    rope_theta: float = 10000.0  # this is RoPE base value and it controls the spacing between frequencies
     rope_factor: int = 40  # TBD, I do not understand this yet
     beta_fast: int = 32  # TBD, I do not understand this yet
     beta_slow: int = 1  # TBD, I do not understand this yet
