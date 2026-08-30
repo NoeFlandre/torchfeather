@@ -1,11 +1,19 @@
 import math
+from typing import Protocol
 
 import torch
 
-from torchfeather.model.model_args import DeepseekV3ModelArgs
 
+class _RoPEConfig(Protocol):
+    qk_rope_head_dim: int
+    max_seq_len: int
+    beta_fast: float
+    beta_slow: float
+    rope_theta: float
+    rope_factor: float
+    original_seq_len: int
 
-def precompute_freq_cis(args: DeepseekV3ModelArgs) -> torch.Tensor:
+def precompute_freq_cis(args: _RoPEConfig) -> torch.Tensor:
     dim = args.qk_rope_head_dim
     seq_len = args.max_seq_len
     beta_fast = args.beta_fast
