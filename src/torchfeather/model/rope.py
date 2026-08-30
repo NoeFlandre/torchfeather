@@ -13,6 +13,7 @@ class _RoPEConfig(Protocol):
     rope_factor: float
     original_seq_len: int
 
+
 def precompute_freq_cis(args: _RoPEConfig) -> torch.Tensor:
     dim = args.qk_rope_head_dim
     seq_len = args.max_seq_len
